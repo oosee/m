@@ -1,4 +1,4 @@
-#!/bin/sh	/etc/rc.common
+#!/bin/sh /etc/rc.common
 # shellcheck disable=3043,3060,2086,2034
 #
 # Copyright (c) 2014, 2019-2020 The Linux Foundation. All rights reserved.
@@ -14,10 +14,6 @@
 # WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-
-# The shebang above has an extra space intentionally to avoid having
-# openwrt build scripts automatically enable this package starting
-# at boot.
 
 START=26
 USE_PROCD=1
@@ -52,33 +48,13 @@ sysctl_update() {
 }
 
 get_front_end_mode() {
-	config_load "ecm"
-
-	config_get front_end global acceleration_engine "auto"
-
-	# shellcheck disable=2154
-	case $front_end in
-		auto)
-			echo '0'
-			;;
-		nss)
-			echo '1'
-			;;
-		sfe)
-			echo '2'
-			;;
-		both)
-			echo '4'
-			;;
-		*)
-			echo '0'
-			;;
-	esac
+	echo '0'
 }
 
 disable_packet_steering() {
-	uci -q set network.globals.packet_steering=0 && uci commit network.globals.packet_steering
-	uci -q del network.globals.steering_flows		&& uci commit network.globals.steering_flows
+	uci -q set network.globals.packet_steering=0
+	uci -q del network.globals.steering_flows
+	uci -q commit network
 
 	if [ -e "/usr/libexec/platform/packet-steering.sh" ]; then
 		/usr/libexec/platform/packet-steering.sh 0
@@ -91,22 +67,6 @@ disable_bridge_filtering() {
 	sysctl_update net.bridge.bridge-nf-call-arptables 0
 	sysctl_update net.bridge.bridge-nf-call-iptables 0
 	sysctl_update net.bridge.bridge-nf-call-ip6tables 0
-}
-
-enable_bridge_filtering() {
-
-	# If bridge filtering is enabled, apply and persist the sysctl flags
-	config_load ecm
-	config_get enable_bridge_filtering general enable_bridge_filtering 0
-
-	# shellcheck disable=2154
-	if [ "$enable_bridge_filtering" -eq 1 ]; then
-		sysctl_update net.bridge.bridge-nf-call-arptables 1
-		sysctl_update net.bridge.bridge-nf-call-iptables 1
-		sysctl_update net.bridge.bridge-nf-call-ip6tables 1
-	else
-		disable_bridge_filtering
-	fi
 }
 
 set_front_end() {
@@ -183,26 +143,12 @@ unload_ecm() {
 	fi
 }
 
-service_triggers() {
-	procd_add_reload_trigger "network"
-	procd_add_reload_trigger "packet_steering"
-}
-
-reload_service() {
-	disable_packet_steering
-}
-
 start_service() {
 	load_ecm
 
 	disable_packet_steering
 
-	# Only enable bridge filtering if using deprecated fw3
-	if [ ! -r /sbin/fw4 ]; then
-		enable_bridge_filtering
-	else
-		disable_bridge_filtering
-	fi
+	disable_bridge_filtering
 
 	# If the acceleration engine is NSS, enable wifi redirect
 	[ -d /sys/kernel/debug/ecm/ecm_nss_ipv4 ] && [ -w /proc/sys/dev/nss/general/redirect ] && sysctl -w dev.nss.general.redirect=1
